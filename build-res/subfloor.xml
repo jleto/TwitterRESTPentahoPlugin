@@ -2768,10 +2768,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     <delete dir="${checkstyle.reports.dir}/xml"/>
     <mkdir dir="${checkstyle.dir}/lib"/>
 
-    <taskdef resource="com/puppycrawl/tools/checkstyle/ant/checkstyle-ant-task.properties">
-      <classpath refid="checkstyle.classpath"/>
-    </taskdef>
-
     <get usetimestamp="true" src="${checkstyle.config.url}" dest="${checkstyle.config.file}"/>
     <get usetimestamp="true" src="${checkstyle.suppressions.url}" dest="${checkstyle.suppressions.file}"/>
 

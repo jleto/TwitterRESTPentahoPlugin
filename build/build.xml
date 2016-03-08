@@ -13,7 +13,7 @@
 	<property name="dist" location="dist" />
 	<property name="diststep" location="${dist}/steps/Demo" />
 	<property name="pluginname" value="Demo" />
-	<property name="jarfilename" value="demo-step.jar" />
+	<property name="jarfilename" value="twitter-rest-pdi-plugin.jar" />
 
 	<!-- used to compile code -->
 	<path id="compile.classpath">

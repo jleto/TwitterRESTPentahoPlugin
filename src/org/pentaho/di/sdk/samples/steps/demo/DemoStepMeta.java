@@ -261,7 +261,7 @@ public class DemoStepMeta extends BaseStepMeta implements StepMetaInterface {
 	 * @param repository		the repository instance optionally read from
 	 * @param metaStore			the metaStore to optionally read from
 	 */
-	@SuppressWarnings("deprecation")
+
 	public void getFields(RowMetaInterface inputRowMeta, String name, RowMetaInterface[] info, StepMeta nextStep, VariableSpace space, Repository repository, IMetaStore metaStore) throws KettleStepException{
 
 		/*
