@@ -24,12 +24,14 @@ package org.pentaho.di.sdk.samples.steps.demo;
 
 import java.io.IOException;
 import java.net.URLDecoder;
-import java.util.HashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.pentaho.di.core.exception.KettleException;
+import org.pentaho.di.core.row.RowDataUtil;
 import org.pentaho.di.core.row.RowMetaInterface;
 import org.pentaho.di.trans.Trans;
 import org.pentaho.di.trans.TransMeta;
@@ -124,10 +126,10 @@ public class DemoStep extends BaseStep implements StepInterface {
 	 * 
 	 * @return true to indicate that the function should be called again, false if the step is done
 	 */
+	
 	public boolean processRow(StepMetaInterface smi, StepDataInterface sdi) throws KettleException {
 
 		// safely cast the step settings (meta) and runtime info (data) to specific implementations 
-		@SuppressWarnings("unused")
 		DemoStepMeta meta = (DemoStepMeta) smi;
 		DemoStepData data = (DemoStepData) sdi;
 
@@ -147,84 +149,104 @@ public class DemoStep extends BaseStep implements StepInterface {
 			first = false;
 			// clone the input row structure and place it in our data object
 			data.outputRowMeta = (RowMetaInterface) getInputRowMeta().clone();
-			// use meta.getFields() to change it, so it reflects the output row structure 
-			//meta.getFields(data.outputRowMeta, getStepname(), null, null, this, null, null);
+			meta.getFields(data.outputRowMeta, getStepname(), null, null, this, null, null);	
 			
 			//twitter properties
-			String consumerKey = null;
-			String consumerSecret = null;
-			String applicationName = null;
-			String endPointAuthUrl = null;
-			String endPointUrl = null;
-			String searchTerm = null;
-			
+			JSONObject properties = null;			
 			String json = null;
 			JSONObject response = null;
-			String tweet_id = null;
-			String tweet_text = null;
-			String user_id = null;
-			Long user_friend_count = 0L;
-			String search_term = null;
+			JSONObject user = null;			
 			
-			JSONObject properties = null;
+			//check if input row with connection parameters exists
 			if (r.length > 0)
 			{
 				try {
+					
+					//Read in properties in json format
 					properties = new JSONObject(r[0].toString());
-					consumerKey = properties.getString("consumerKey");
-					consumerSecret = properties.getString("consumerSecret");
-					applicationName = properties.getString("applicationName");
-					endPointAuthUrl = properties.getString("endPointAuthUrl");
-					endPointUrl = properties.getString("endPointUrl");
-					searchTerm = properties.getString("searchTerm");
+					
 				} catch (JSONException e) {
 					e.printStackTrace();
+					setOutputDone();
+					return false;
 				}				
 			}
 			
-			TwitterRequest tr;
 			try {
-				//tr = new TwitterRequest();
-				tr = new TwitterRequest(consumerKey, consumerSecret, applicationName, endPointAuthUrl);
-				json = tr.Search(endPointUrl, searchTerm);
+				
+				//Instantiate REST client object
+				TwitterRequest tr = new TwitterRequest();
+				
+				//Open connection, get bearer token  
+				tr.open(properties.getString("consumerKey"),
+						properties.getString("consumerSecret"),
+						properties.getString("applicationName"),
+						properties.getString("endPointAuthUrl"));
+				
+				// Send query to Twitter and receive response
+				json = tr.Search(properties.getString("endPointUrl"),
+						properties.getString("searchTerm"));
+				
+				//Close connection
+				tr.close();
 				
 				if (json != null)
 				{
 					try {
 						response = new JSONObject(json);
-						JSONArray tweets = response.getJSONArray("statuses");
+						JSONArray tweets = response.getJSONArray("statuses");				
 						
+					     // Search for Users
+					     String patternMentionStr = "(?:\\s|\\A)[@]+([A-Za-z0-9-_]+)";
+					     Pattern patternMention = Pattern.compile(patternMentionStr);
+
+					     // Search for hashtags
+					     String patternHashtagStr = "(?:\\s|\\A)[##]+([A-Za-z0-9-_]+)";
+			    	     Pattern patternHashtag = Pattern.compile(patternHashtagStr);
+			    	 
+
+					     
+					     
 						for ( int row=0;row<tweets.length();row++)
 						{
-							tweet_id = tweets.getJSONObject(row).getString("id_str");
-							tweet_text = tweets.getJSONObject(row).getString("text");
-							JSONObject user = new JSONObject(tweets.getJSONObject(row).getString("user"));
-							user_id = user.getString("id_str");
-							user_friend_count =  user.getLong("friends_count");
-							search_term = response.getJSONObject("search_metadata").getString("query");
-							search_term = URLDecoder.decode(search_term, "UTF-8");
+							 // Mentions
+							 JSONObject mentions = new JSONObject();
+						     Matcher matcher = patternMention.matcher(tweets.getJSONObject(row).getString("text"));
+						     while (matcher.find()) {
+						         String result = matcher.group().replace(" ", "");
+						         mentions.append("mentions", result);
+						     }
+						     
+				    	     // Hashtags
+						     JSONObject hashtags = new JSONObject();
+						     matcher = patternHashtag.matcher(tweets.getJSONObject(row).getString("text"));
+				    	     while (matcher.find()) {
+				    	         String result = matcher.group().replace(" ", "");
+				    	         hashtags.append("hashtags", result);
+				    	     }						     
+						     
+							user = new JSONObject(tweets.getJSONObject(row).getString("user"));
 							
-							// safely add the string "Hello World!" at the end of the output row
-							// the row array will be resized if necessary 
-							//Object[] outputRow = RowDataUtil.addValueData(r, data.outputRowMeta.size() - 1, "Hello World!");
-							Object[] outputRow = r;
-							outputRow[1] = tweet_id;
-							outputRow[2] = tweet_text;
-							outputRow[3] = user_id;
-							outputRow[4] = user_friend_count;
-							outputRow[5] = search_term;								
+							// Initialize output row
+							Object[] outputRow = RowDataUtil.allocateRowData(data.outputRowMeta.size());														
+							outputRow[1] = tweets.getJSONObject(row).getString("id_str");
+							outputRow[2] = tweets.getJSONObject(row).getString("text");
+							outputRow[3] = user.getString("id_str");
+							outputRow[4] = user.getLong("friends_count");
+							outputRow[5] = URLDecoder.decode(response.getJSONObject("search_metadata").getString("query"), "UTF-8");
+							outputRow[6] = mentions.toString();
+							outputRow[7] = hashtags.toString();
 							
 							// put the row to the output row stream
-							putRow(data.outputRowMeta, outputRow); 
-							
+							putRow(data.outputRowMeta, outputRow);							
 						}
-						setOutputDone();
-						return false;
 					} catch (JSONException e) {
 						e.printStackTrace();
 					}
-				}
-			} catch (IOException e) {
+				}//if json != null
+			} catch (IOException e) {				
+				e.printStackTrace();		
+			} catch (JSONException e) {
 				e.printStackTrace();
 			}
 		}
@@ -234,7 +256,8 @@ public class DemoStep extends BaseStep implements StepInterface {
 			logBasic("Linenr " + getLinesRead()); // Some basic logging
 		}
 		
-		// indicate that processRow() should be called again
+		// indicate that processRow() should not be called again
+		setOutputDone();
 		return false;
 	}
 
